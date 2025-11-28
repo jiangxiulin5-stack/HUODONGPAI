@@ -163,3 +163,108 @@ export const generateSlideContent = async (topic: string, type: SlideType = Slid
     return generateMockSlide(topic, type);
   }
 };
+
+export const generateSlidesFromPdf = async (pdfBase64: string): Promise<Slide[]> => {
+  const apiKey = getApiKey();
+  if (!apiKey) {
+    console.warn("No API Key found. Returning mock PDF response.");
+    await new Promise(resolve => setTimeout(resolve, 2000));
+    return [
+      generateMockSlide("PDF分析1", SlideType.POLL),
+      generateMockSlide("PDF分析2", SlideType.WORD_CLOUD)
+    ];
+  }
+
+  try {
+    const ai = new GoogleGenAI({ apiKey });
+    const timestamp = Date.now();
+
+    const response = await ai.models.generateContent({
+      model: "gemini-2.5-flash",
+      contents: {
+        parts: [
+          {
+            inlineData: {
+              mimeType: "application/pdf",
+              data: pdfBase64,
+            },
+          },
+          {
+            text: `Analyze this document and create 3 distinct interactive presentation slides based on its key content. 
+            Return a JSON array where each item represents a slide.
+            
+            Include:
+            1. One Multiple Choice Question (POLL) to test understanding.
+            2. One Word Cloud Prompt (WORD_CLOUD) to gather opinions/keywords.
+            3. One Q&A Prompt (QNA) for open discussion.
+
+            Language: Simplified Chinese.`
+          },
+        ],
+      },
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.ARRAY,
+          items: {
+            type: Type.OBJECT,
+            properties: {
+              type: { type: Type.STRING, enum: ["POLL", "WORD_CLOUD", "QNA"] },
+              question: { type: Type.STRING },
+              options: {
+                type: Type.ARRAY,
+                items: {
+                  type: Type.OBJECT,
+                  properties: {
+                     label: { type: Type.STRING }
+                  }
+                },
+                description: "Only for POLL type"
+              }
+            },
+            required: ["type", "question"]
+          }
+        }
+      },
+    });
+
+    const jsonText = response.text;
+    if (!jsonText) throw new Error("Empty response from AI");
+    
+    const data = JSON.parse(jsonText);
+
+    return data.map((item: any, index: number) => {
+        const slideId = `pdf_${timestamp}_${index}`;
+        if (item.type === 'POLL') {
+            return {
+                id: slideId,
+                type: SlideType.POLL,
+                question: item.question,
+                options: item.options?.map((opt: any, idx: number) => ({
+                    id: `${slideId}_opt_${idx}`,
+                    label: opt.label,
+                    count: 0
+                })) || []
+            };
+        } else if (item.type === 'WORD_CLOUD') {
+            return {
+                id: slideId,
+                type: SlideType.WORD_CLOUD,
+                question: item.question,
+                words: []
+            };
+        } else {
+             return {
+                id: slideId,
+                type: SlideType.QNA,
+                question: item.question,
+                qnaEntries: []
+            };
+        }
+    });
+
+  } catch (error) {
+    console.error("PDF Generation Error:", error);
+    return [];
+  }
+}
