@@ -16,8 +16,20 @@ const MOCK_GENERATED_SLIDE: Slide = {
   ]
 };
 
+// Helper to safely get env var without crashing in browser if process is undefined
+const getApiKey = () => {
+  try {
+    if (typeof process !== 'undefined' && process.env) {
+      return process.env.API_KEY;
+    }
+  } catch (e) {
+    // Ignore error
+  }
+  return undefined;
+};
+
 export const generateSlideContent = async (topic: string): Promise<Slide> => {
-  const apiKey = process.env.API_KEY;
+  const apiKey = getApiKey();
 
   if (!apiKey) {
     console.warn("No API Key found. Returning mock AI response.");
