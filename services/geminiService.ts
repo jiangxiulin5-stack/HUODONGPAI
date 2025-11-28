@@ -1,20 +1,5 @@
-import { GoogleGenAI, Type } from "@google/genai";
-import { Slide, SlideType } from "../types";
-
-// This service mocks the creation of a slide if no API key is present,
-// or uses Gemini if the key is available.
-
-const MOCK_GENERATED_SLIDE: Slide = {
-  id: `gen_${Date.now()}`,
-  type: SlideType.POLL,
-  question: "AI 生成：人工智能对未来教育最大的影响是？",
-  options: [
-    { id: 'go1', label: '个性化学习路径', count: 0 },
-    { id: 'go2', label: '教师角色的转变', count: 0 },
-    { id: 'go3', label: '自动批改与评估', count: 0 },
-    { id: 'go4', label: '全球知识的平权', count: 0 },
-  ]
-};
+import { GoogleGenAI, Type, Schema } from "@google/genai";
+import { Slide, SlideType, PollOption } from "../types";
 
 // Helper to safely get env var without crashing in browser if process is undefined
 const getApiKey = () => {
@@ -28,43 +13,111 @@ const getApiKey = () => {
   return undefined;
 };
 
-export const generateSlideContent = async (topic: string): Promise<Slide> => {
+// Mock fallback generator based on type
+const generateMockSlide = (topic: string, type: SlideType): Slide => {
+  const timestamp = Date.now();
+  
+  if (type === SlideType.WORD_CLOUD) {
+    return {
+      id: `gen_${timestamp}`,
+      type: SlideType.WORD_CLOUD,
+      question: `关于"${topic}"，用一个词形容你的看法？`,
+      words: [
+        { text: '示例词1', count: 1 }
+      ]
+    };
+  }
+
+  if (type === SlideType.QNA) {
+    return {
+      id: `gen_${timestamp}`,
+      type: SlideType.QNA,
+      question: `关于"${topic}"，你有什么疑问或见解？`,
+      qnaEntries: []
+    };
+  }
+
+  // Default to POLL
+  return {
+    id: `gen_${timestamp}`,
+    type: SlideType.POLL,
+    question: `AI 生成：关于"${topic}"的关键问题是？`,
+    options: [
+      { id: `opt_${timestamp}_1`, label: '选项 A：非常重要', count: 0 },
+      { id: `opt_${timestamp}_2`, label: '选项 B：一般重要', count: 0 },
+      { id: `opt_${timestamp}_3`, label: '选项 C：不相关', count: 0 },
+    ]
+  };
+};
+
+export const generateSlideContent = async (topic: string, type: SlideType = SlideType.POLL): Promise<Slide> => {
   const apiKey = getApiKey();
 
   if (!apiKey) {
     console.warn("No API Key found. Returning mock AI response.");
-    // Simulate network delay
-    await new Promise(resolve => setTimeout(resolve, 1500));
-    return MOCK_GENERATED_SLIDE;
+    await new Promise(resolve => setTimeout(resolve, 1500)); // Simulate delay
+    return generateMockSlide(topic, type);
   }
 
   try {
     const ai = new GoogleGenAI({ apiKey });
     
-    // Schema for structured output
-    const responseSchema = {
-      type: Type.OBJECT,
-      properties: {
-        question: { type: Type.STRING, description: "The poll question based on the topic." },
-        options: {
-          type: Type.ARRAY,
-          items: {
+    let systemInstruction = "";
+    let prompt = "";
+    let responseSchema: Schema;
+
+    // Define Schema and Prompts based on Type
+    if (type === SlideType.POLL) {
+        systemInstruction = "You are an expert educational content creator. Create a multiple-choice poll question.";
+        prompt = `Create a poll question and 3-4 distinct options about the topic: "${topic}". Language must be Simplified Chinese.`;
+        
+        responseSchema = {
             type: Type.OBJECT,
             properties: {
-              label: { type: Type.STRING, description: "A poll option text." }
+                question: { type: Type.STRING, description: "The poll question." },
+                options: {
+                    type: Type.ARRAY,
+                    items: {
+                        type: Type.OBJECT,
+                        properties: {
+                            label: { type: Type.STRING, description: "Option text." }
+                        },
+                        required: ["label"]
+                    }
+                }
             },
-            required: ["label"]
-          },
-          description: "List of 3-4 options for the poll."
-        }
-      },
-      required: ["question", "options"]
-    };
+            required: ["question", "options"]
+        };
+    } else if (type === SlideType.WORD_CLOUD) {
+        systemInstruction = "You are an expert presenter. Create a prompt for a Word Cloud activity.";
+        prompt = `Create a concise, open-ended question that encourages one-word answers about the topic: "${topic}". Language must be Simplified Chinese.`;
+        
+        responseSchema = {
+            type: Type.OBJECT,
+            properties: {
+                question: { type: Type.STRING, description: "The word cloud prompt question." }
+            },
+            required: ["question"]
+        };
+    } else {
+        // Q&A
+        systemInstruction = "You are an expert moderator. Create a discussion prompt.";
+        prompt = `Create a broad, open-ended question to start a Q&A session or discussion about: "${topic}". Language must be Simplified Chinese.`;
+        
+        responseSchema = {
+            type: Type.OBJECT,
+            properties: {
+                question: { type: Type.STRING, description: "The Q&A discussion starter." }
+            },
+            required: ["question"]
+        };
+    }
 
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash",
-      contents: `Create a poll question and options about this topic: "${topic}". Language must be Simplified Chinese.`,
+      contents: prompt,
       config: {
+        systemInstruction: systemInstruction,
         responseMimeType: "application/json",
         responseSchema: responseSchema,
       },
@@ -74,20 +127,39 @@ export const generateSlideContent = async (topic: string): Promise<Slide> => {
     if (!jsonText) throw new Error("Empty response from AI");
     
     const data = JSON.parse(jsonText);
+    const timestamp = Date.now();
 
-    return {
-      id: `gen_${Date.now()}`,
-      type: SlideType.POLL,
-      question: data.question,
-      options: data.options.map((opt: any, idx: number) => ({
-        id: `opt_${Date.now()}_${idx}`,
-        label: opt.label,
-        count: 0
-      }))
-    };
+    // Transform API response to App Domain Model
+    if (type === SlideType.POLL) {
+        return {
+            id: `gen_${timestamp}`,
+            type: SlideType.POLL,
+            question: data.question,
+            options: data.options.map((opt: any, idx: number) => ({
+                id: `opt_${timestamp}_${idx}`,
+                label: opt.label,
+                count: 0
+            }))
+        };
+    } else if (type === SlideType.WORD_CLOUD) {
+        return {
+            id: `gen_${timestamp}`,
+            type: SlideType.WORD_CLOUD,
+            question: data.question,
+            words: []
+        };
+    } else {
+        return {
+            id: `gen_${timestamp}`,
+            type: SlideType.QNA,
+            question: data.question,
+            qnaEntries: []
+        };
+    }
 
   } catch (error) {
     console.error("Gemini API Error:", error);
-    return MOCK_GENERATED_SLIDE;
+    // Fallback to mock if API fails
+    return generateMockSlide(topic, type);
   }
 };

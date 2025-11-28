@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { 
   ChevronLeft, ChevronRight, Sparkles, Users, 
-  Share2, MoreHorizontal, MonitorPlay, X
+  Share2, MoreHorizontal, MonitorPlay, X,
+  BarChart3, Cloud, MessageCircle
 } from 'lucide-react';
 import { SessionState, SlideType } from '../../types';
 import { ResultVisualizer } from './ResultVisualizer';
@@ -15,9 +16,12 @@ interface PresenterDashboardProps {
 
 export const PresenterDashboard: React.FC<PresenterDashboardProps> = ({ session, updateSession, onExit }) => {
   const currentSlide = session.slides[session.currentSlideIndex];
-  const [aiPrompt, setAiPrompt] = useState('');
-  const [isGenerating, setIsGenerating] = useState(false);
+  
+  // AI Modal States
   const [showAiModal, setShowAiModal] = useState(false);
+  const [aiPrompt, setAiPrompt] = useState('');
+  const [selectedAiType, setSelectedAiType] = useState<SlideType>(SlideType.POLL);
+  const [isGenerating, setIsGenerating] = useState(false);
 
   // Calculate total responses for the current slide
   const totalResponses = (() => {
@@ -56,7 +60,8 @@ export const PresenterDashboard: React.FC<PresenterDashboardProps> = ({ session,
     if (!aiPrompt.trim()) return;
     setIsGenerating(true);
     
-    const newSlide = await generateSlideContent(aiPrompt);
+    // Call service with specific type
+    const newSlide = await generateSlideContent(aiPrompt, selectedAiType);
     
     updateSession({
       ...session,
@@ -126,7 +131,7 @@ export const PresenterDashboard: React.FC<PresenterDashboardProps> = ({ session,
                     className="flex items-center gap-2 px-4 py-2 bg-purple-600/20 text-purple-300 rounded-lg hover:bg-purple-600/30 hover:text-purple-200 transition-all border border-purple-500/30"
                 >
                     <Sparkles className="w-4 h-4" />
-                    <span className="font-medium text-sm">AI 提问</span>
+                    <span className="font-medium text-sm">AI 出题</span>
                 </button>
                 <span className="text-xs text-slate-500 font-mono">
                     {session.currentSlideIndex + 1} / {session.slides.length}
@@ -169,9 +174,9 @@ export const PresenterDashboard: React.FC<PresenterDashboardProps> = ({ session,
 
              {/* Right Info */}
              <div className="flex items-center gap-4">
-                 <div className="flex items-center gap-2 px-3 py-1.5 bg-slate-700/50 rounded-full border border-white/5" title="当前参与人数">
-                    <Users className="w-4 h-4 text-slate-400" />
-                    <span className="font-bold text-sm text-white">{totalResponses}</span>
+                 <div key={totalResponses} className="flex items-center gap-2 px-3 py-1.5 bg-blue-50 text-blue-700 rounded-full shadow-[0_2px_8px_rgba(59,130,246,0.2)] animate-slide-enter" title="当前参与人数">
+                    <Users className="w-4 h-4" />
+                    <span className="font-bold text-sm">{totalResponses} 人参与</span>
                  </div>
                  
                  <button className="p-2 text-slate-400 hover:text-white hover:bg-white/10 rounded-lg transition-colors">
@@ -181,40 +186,76 @@ export const PresenterDashboard: React.FC<PresenterDashboardProps> = ({ session,
          </div>
       </div>
 
-      {/* AI Generation Modal - Dark Theme */}
+      {/* AI Generation Modal - Enhanced */}
       {showAiModal && (
           <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-              <div className="bg-slate-800 border border-white/10 rounded-2xl w-full max-w-md p-6 shadow-2xl animate-fade-in-up">
-                  <div className="flex justify-between items-center mb-4">
+              <div className="bg-slate-800 border border-white/10 rounded-2xl w-full max-w-lg p-6 shadow-2xl animate-fade-in-up">
+                  <div className="flex justify-between items-center mb-6">
                       <h3 className="text-xl font-bold text-white flex items-center gap-2">
                           <Sparkles className="w-5 h-5 text-purple-400" />
                           AI 智能出题
                       </h3>
                       <button onClick={() => setShowAiModal(false)} className="text-slate-400 hover:text-white transition-colors">✕</button>
                   </div>
-                  <p className="text-slate-400 text-sm mb-4">
-                      输入一个主题，AI 将自动为您生成互动投票幻灯片。
-                  </p>
-                  <input 
-                    type="text"
-                    value={aiPrompt}
-                    onChange={(e) => setAiPrompt(e.target.value)}
-                    placeholder="请输入主题（例如：团队建设）..."
-                    className="w-full bg-slate-900 border border-slate-700 text-white rounded-lg px-4 py-3 mb-4 focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none placeholder-slate-600"
-                    autoFocus
-                  />
+
+                  {/* Type Selection */}
+                  <div className="mb-6">
+                      <label className="text-xs text-slate-400 font-bold uppercase tracking-wider mb-3 block">选择互动类型</label>
+                      <div className="grid grid-cols-3 gap-3">
+                          <button 
+                            onClick={() => setSelectedAiType(SlideType.POLL)}
+                            className={`p-3 rounded-xl border flex flex-col items-center gap-2 transition-all ${selectedAiType === SlideType.POLL ? 'bg-purple-600/20 border-purple-500 text-purple-200' : 'bg-slate-700/50 border-transparent text-slate-400 hover:bg-slate-700'}`}
+                          >
+                              <BarChart3 className="w-6 h-6" />
+                              <span className="text-xs font-medium">投票</span>
+                          </button>
+                          <button 
+                            onClick={() => setSelectedAiType(SlideType.WORD_CLOUD)}
+                            className={`p-3 rounded-xl border flex flex-col items-center gap-2 transition-all ${selectedAiType === SlideType.WORD_CLOUD ? 'bg-purple-600/20 border-purple-500 text-purple-200' : 'bg-slate-700/50 border-transparent text-slate-400 hover:bg-slate-700'}`}
+                          >
+                              <Cloud className="w-6 h-6" />
+                              <span className="text-xs font-medium">词云</span>
+                          </button>
+                          <button 
+                            onClick={() => setSelectedAiType(SlideType.QNA)}
+                            className={`p-3 rounded-xl border flex flex-col items-center gap-2 transition-all ${selectedAiType === SlideType.QNA ? 'bg-purple-600/20 border-purple-500 text-purple-200' : 'bg-slate-700/50 border-transparent text-slate-400 hover:bg-slate-700'}`}
+                          >
+                              <MessageCircle className="w-6 h-6" />
+                              <span className="text-xs font-medium">问答</span>
+                          </button>
+                      </div>
+                  </div>
+                  
+                  <div className="mb-6">
+                    <label className="text-xs text-slate-400 font-bold uppercase tracking-wider mb-3 block">
+                        输入主题
+                    </label>
+                    <input 
+                        type="text"
+                        value={aiPrompt}
+                        onChange={(e) => setAiPrompt(e.target.value)}
+                        placeholder={
+                            selectedAiType === SlideType.POLL ? "例如：2024年团队建设目的地..." :
+                            selectedAiType === SlideType.WORD_CLOUD ? "例如：你对新产品的印象..." :
+                            "例如：关于未来战略的讨论..."
+                        }
+                        className="w-full bg-slate-900 border border-slate-700 text-white rounded-xl px-4 py-4 focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none placeholder-slate-600"
+                        autoFocus
+                    />
+                  </div>
+
                   <button 
                     onClick={handleAiGenerate}
                     disabled={isGenerating || !aiPrompt.trim()}
-                    className="w-full bg-gradient-to-r from-purple-600 to-blue-600 text-white py-3 rounded-lg font-bold hover:brightness-110 disabled:opacity-50 disabled:cursor-not-allowed flex justify-center items-center gap-2 shadow-lg shadow-purple-900/20"
+                    className="w-full bg-gradient-to-r from-purple-600 to-blue-600 text-white py-4 rounded-xl font-bold hover:brightness-110 disabled:opacity-50 disabled:cursor-not-allowed flex justify-center items-center gap-2 shadow-lg shadow-purple-900/20 transition-all active:scale-[0.98]"
                   >
                       {isGenerating ? (
                           <>
                            <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
-                           正在思考...
+                           正在构思中...
                           </>
                       ) : (
-                          "生成幻灯片"
+                          "立即生成"
                       )}
                   </button>
               </div>
