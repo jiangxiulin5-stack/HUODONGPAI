@@ -7,7 +7,17 @@ import { SessionState, Slide, SlideType, STORAGE_KEY } from './types';
 import { INITIAL_SESSION } from './services/mockData';
 
 const App: React.FC = () => {
-  const [view, setView] = useState<'landing' | 'teacher' | 'student'>('landing');
+  // Initialize view based on URL query parameter
+  const [view, setView] = useState<'landing' | 'teacher' | 'student'>(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      const mode = params.get('mode');
+      if (mode === 'presenter') return 'teacher';
+      if (mode === 'participant') return 'student';
+    }
+    return 'landing';
+  });
+
   const [session, setSession] = useState<SessionState>(INITIAL_SESSION);
 
   // --- Synchronization Logic using LocalStorage ---
@@ -47,13 +57,25 @@ const App: React.FC = () => {
   // --- Handlers ---
 
   const handleEnterStudent = (code: string) => {
-    // In a real app, verify code here.
-    // For demo, we just verify it matches current session or default
+    // Update URL to reflect mode, allowing refresh to stay on page
+    const url = new URL(window.location.href);
+    url.searchParams.set('mode', 'participant');
+    window.history.pushState({}, '', url);
     setView('student');
   };
 
   const handleEnterTeacher = () => {
+    const url = new URL(window.location.href);
+    url.searchParams.set('mode', 'presenter');
+    window.history.pushState({}, '', url);
     setView('teacher');
+  };
+
+  const handleExit = () => {
+    const url = new URL(window.location.href);
+    url.searchParams.delete('mode');
+    window.history.pushState({}, '', url);
+    setView('landing');
   };
 
   const handleStudentResponse = (slideId: string, value: string) => {
@@ -94,7 +116,7 @@ const App: React.FC = () => {
         <PresenterDashboard 
           session={session} 
           updateSession={updateSessionGlobal}
-          onExit={() => setView('landing')}
+          onExit={handleExit}
         />
       </Layout>
     );
